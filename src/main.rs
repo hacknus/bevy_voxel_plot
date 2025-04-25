@@ -37,6 +37,9 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bytemuck::{Pod, Zeroable};
+use dotthz::DotthzFile;
+use ndarray::Axis;
+use std::path::Path;
 
 /// This example uses a shader source file from the assets subdirectory
 const SHADER_ASSET_PATH: &str = "shaders/instancing.wgsl";
@@ -48,7 +51,9 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+fn generate_dummy_data() -> (Vec<InstanceData>, f32, f32, f32) {
+    let mut instances = vec![];
+
     let grid_width = 12;
     let grid_height = 12;
     let grid_depth = 12;
@@ -57,9 +62,6 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     let cube_depth = 1.0;
 
     let mut opacity = 0.0;
-
-    let mut instances = vec![];
-
     for x in 0..grid_width {
         for y in 0..grid_height {
             for z in 0..grid_depth {
@@ -78,12 +80,116 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
             }
         }
     }
+    (instances, cube_width, cube_height, cube_depth)
+}
 
+fn load_thz() -> (Vec<InstanceData>, f32, f32, f32) {
+    let mut instances = vec![];
+
+    let file_path = Path::new("assets/data/scan.thz");
+    let file = DotthzFile::open(&file_path.to_path_buf()).unwrap();
+
+    let time = file
+        .get_dataset("Image", "ds1")
+        .unwrap()
+        .read_1d::<f32>()
+        .unwrap();
+    let arr = file
+        .get_dataset("Image", "ds2")
+        .unwrap()
+        .read_dyn::<f32>()
+        .unwrap();
+
+    let mut dataset = arr.into_dimensionality::<ndarray::Ix3>().unwrap();
+
+    let grid_width = dataset.shape()[0];
+    let grid_height = dataset.shape()[1];
+    let grid_depth = dataset.shape()[2];
+
+    dbg!(&grid_width, &grid_height, &grid_depth);
+
+    let cube_width = 1.0 / 4.0;
+    let cube_height = 1.0 / 4.0;
+    let cube_depth = grid_width as f32 / grid_depth as f32;
+
+    let dt = time.last().unwrap() - time.first().unwrap();
+    let c = 300_000_000.0;
+
+    let cube_depth = cube_width / ((dt) * c / 1.0e9 * 2.0);
+
+    dataset = dataset.powf(2.0);
+
+    // Normalize along z-axis
+    for x in 0..grid_width {
+        for y in 0..grid_height {
+            let mut z_values: Vec<f32> = (0..grid_depth)
+                .map(|z| dataset[[x, y, z]])
+                .collect();
+
+            // Compute min and max for normalization
+            let min = z_values.iter().cloned().fold(f32::INFINITY, f32::min);
+            let max = z_values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+            // Avoid division by zero
+            if max != min {
+                for z in 0..grid_depth {
+                    dataset[[x, y, z]] = (dataset[[x, y, z]] - min) / (max - min);
+                }
+            } else {
+                // All values are the same, set to 0.0 (or 1.0 – your call)
+                for z in 0..grid_depth {
+                    dataset[[x, y, z]] = 0.0;
+                }
+            }
+        }
+    }
+
+    let maxval = dataset.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    dbg!(&maxval);
+
+    for z in 0..grid_depth {
+        for y in 0..grid_height {
+            for x in 0..grid_width {
+                // Calculate the position based on the indices (x, y, z)
+                let position = Vec3::new(
+                    x as f32 * cube_width - (grid_width as f32 * cube_width) / 2.0,
+                    y as f32 * cube_height - (grid_height as f32 * cube_height) / 2.0,
+                    z as f32 * cube_depth - (grid_depth as f32 * cube_depth) / 2.0,
+                );
+
+                let mut opacity = *dataset
+                    .index_axis(Axis(0), x)
+                    .index_axis(Axis(0), y)
+                    .index_axis(Axis(0), z).into_scalar();
+
+                // Create the instance data with the calculated position and opacity
+                let instance = InstanceData {
+                    pos_scale: [position.x, position.y, position.z, 1.0],
+                    color: LinearRgba::from(Color::srgba(opacity, 1.0-opacity, 0.0, opacity)).to_f32_array(),
+                };
+
+                // Push the instance into the vector
+                instances.push(instance);
+            }
+        }
+    }
+
+    dbg!(&cube_width, &cube_height, &cube_depth);
+
+    (instances, cube_width, cube_height, cube_depth)
+}
+
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    let (mut instances, cube_width, cube_height, cube_depth) = load_thz();
+
+    dbg!(&instances.len());
     // only draw above a threshold!
     instances = instances
         .into_iter()
-        .filter(|i| i.color.to_vec()[3] > 0.05)
+        .filter(|i| i.color.to_vec()[3] > 0.1)
         .collect();
+
+    dbg!(&instances.len());
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
