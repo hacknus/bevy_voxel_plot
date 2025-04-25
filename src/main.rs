@@ -49,15 +49,14 @@ fn main() {
 }
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    let grid_width = 120;
-    let grid_height = 120;
-    let grid_depth = 120;
+    let grid_width = 12;
+    let grid_height = 12;
+    let grid_depth = 12;
     let cube_width = 1.0;
     let cube_height = 1.0;
     let cube_depth = 1.0;
 
     let mut opacity = 0.0;
-    let mut counter = 0;
 
     let mut instances = vec![];
 
@@ -65,20 +64,26 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
         for y in 0..grid_height {
             for z in 0..grid_depth {
                 opacity += 1.0 / (grid_width * grid_height * grid_depth) as f32;
-                counter += 1;
                 let position = Vec3::new(
-                    x as f32 - grid_width as f32 / 2.0,
-                    y as f32 - grid_height as f32 / 2.0,
-                    z as f32 - grid_depth as f32 / 2.0,
+                    x as f32 * cube_width - (grid_width as f32 * cube_width) / 2.0,
+                    y as f32 * cube_height - (grid_height as f32 * cube_height) / 2.0,
+                    z as f32 * cube_depth - (grid_depth as f32 * cube_depth) / 2.0,
                 );
                 let instance = InstanceData {
                     pos_scale: [position.x, position.y, position.z, 1.0],
-                    color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, opacity)).to_f32_array(),
+                    color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, opacity.powf(2.0)))
+                        .to_f32_array(),
                 };
                 instances.push(instance);
             }
         }
     }
+
+    // only draw above a threshold!
+    instances = instances
+        .into_iter()
+        .filter(|i| i.color.to_vec()[3] > 0.05)
+        .collect();
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
