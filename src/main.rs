@@ -48,17 +48,13 @@ fn main() {
         .run();
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let grid_width = 3;
-    let grid_height = 3;
-    let grid_depth = 3;
-    let cube_width = 0.5;
-    let cube_height = 0.5;
-    let cube_depth = 0.5;
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    let grid_width = 120;
+    let grid_height = 120;
+    let grid_depth = 120;
+    let cube_width = 1.0;
+    let cube_height = 1.0;
+    let cube_depth = 1.0;
 
     let mut opacity = 0.0;
     let mut counter = 0;
@@ -73,38 +69,20 @@ fn setup(
                 let position = Vec3::new(
                     x as f32 - grid_width as f32 / 2.0,
                     y as f32 - grid_height as f32 / 2.0,
-                    z as f32 - grid_depth as f32  / 2.0,
+                    z as f32 - grid_depth as f32 / 2.0,
                 );
                 let instance = InstanceData {
                     pos_scale: [position.x, position.y, position.z, 1.0],
-                    // color: LinearRgba::from(Color::srgba(
-                    //     x as f32 / grid_width as f32,
-                    //     y as f32 / grid_height as f32,
-                    //     z as f32 / grid_depth as f32,
-                    //     opacity,
-                    // ))
-                    color: LinearRgba::from(Color::srgba(
-                        1.0,
-                        0.0,
-                        0.0,
-                        opacity,
-                    ))
-                        .to_f32_array(),
+                    color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, opacity)).to_f32_array(),
                 };
-                dbg!(&opacity);
-                dbg!(&counter);
                 instances.push(instance);
             }
         }
     }
 
-
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
-        InstanceMaterialData {
-            instances,
-            alpha_mode: AlphaMode::Blend,
-        },
+        InstanceMaterialData { instances },
         // NOTE: Frustum culling is done based on the Aabb of the Mesh and the GlobalTransform.
         // As the cube is at the origin, if its Aabb moves outside the view frustum, all the
         // instanced cubes will be culled.
@@ -114,20 +92,6 @@ fn setup(
         // component to avoid incorrect culling.
         NoFrustumCulling,
     ));
-
-    // Create a transparent red material
-    // let material_handle = materials.add(StandardMaterial {
-    //     base_color: Color::rgba(1.0, 0.0, 0.0, 0.5), // Red with 50% alpha
-    //     ..Default::default()
-    // });
-
-    // Spawn the cube with the material
-    // commands.spawn(PbrBundle {
-    //     mesh: Mesh3d::from(mesh_handle),
-    //     material: MeshMaterial3d::from(material_handle),
-    //     transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
-    //     ..Default::default()
-    // });
 
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
@@ -144,7 +108,6 @@ fn setup(
 #[derive(Component)]
 struct InstanceMaterialData {
     instances: Vec<InstanceData>,
-    alpha_mode: AlphaMode,
 }
 
 impl ExtractComponent for InstanceMaterialData {
@@ -155,7 +118,6 @@ impl ExtractComponent for InstanceMaterialData {
     fn extract_component(item: QueryItem<'_, Self::QueryData>) -> Option<Self> {
         Some(InstanceMaterialData {
             instances: item.instances.clone(),
-            alpha_mode: AlphaMode::Add,
         })
     }
 }
@@ -246,17 +208,40 @@ struct InstanceBuffer {
 fn prepare_instance_buffers(
     mut commands: Commands,
     query: Query<(Entity, &InstanceMaterialData)>,
+    cameras: Query<&ExtractedView>,
     render_device: Res<RenderDevice>,
 ) {
+    let Some(camera) = cameras.iter().next() else {
+        return;
+    };
+
+    let cam_pos = camera.world_from_view.transform_point(Vec3::ZERO);
+
     for (entity, instance_data) in &query {
+        let mut sorted_instances = instance_data.instances.clone();
+
+        // Sort instances by distance from camera (back-to-front)
+        sorted_instances.sort_by(|a, b| {
+            let a_pos = Vec3::new(a.pos_scale[0], a.pos_scale[1], a.pos_scale[2]);
+            let b_pos = Vec3::new(b.pos_scale[0], b.pos_scale[1], b.pos_scale[2]);
+
+            let a_dist = cam_pos.distance_squared(a_pos);
+            let b_dist = cam_pos.distance_squared(b_pos);
+
+            b_dist
+                .partial_cmp(&a_dist)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("instance data buffer"),
-            contents: bytemuck::cast_slice(instance_data.instances.as_slice()),
+            label: Some("sorted instance data buffer"),
+            contents: bytemuck::cast_slice(sorted_instances.as_slice()),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
+
         commands.entity(entity).insert(InstanceBuffer {
             buffer,
-            length: instance_data.instances.len(),
+            length: sorted_instances.len(),
         });
     }
 }
@@ -291,22 +276,22 @@ impl SpecializedMeshPipeline for CustomPipeline {
         let color_format = TextureFormat::Rgba8UnormSrgb;
 
         // Custom depth stencil settings
-        // descriptor.depth_stencil = Some(DepthStencilState {
-        //     format: TextureFormat::Depth32Float,
-        //     depth_compare: CompareFunction::LessEqual, // Perform depth test
-        //     stencil: StencilState{
-        //         front: Default::default(),
-        //         back: Default::default(),
-        //         read_mask: 0,
-        //         write_mask: 0,
-        //     },               // Use default stencil state
-        //     depth_write_enabled: false,
-        //     bias: DepthBiasState{
-        //         constant: 0,
-        //         slope_scale: 0.0,
-        //         clamp: 0.0,
-        //     },
-        // });
+        descriptor.depth_stencil = Some(DepthStencilState {
+            format: TextureFormat::Depth32Float,
+            depth_compare: CompareFunction::Always,
+            stencil: StencilState {
+                front: Default::default(),
+                back: Default::default(),
+                read_mask: 0,
+                write_mask: 0,
+            }, // Use default stencil state
+            depth_write_enabled: false,
+            bias: DepthBiasState {
+                constant: 0,
+                slope_scale: 0.0,
+                clamp: 0.0,
+            },
+        });
 
         descriptor.fragment.as_mut().unwrap().targets[0] = Some(ColorTargetState {
             format: color_format,
