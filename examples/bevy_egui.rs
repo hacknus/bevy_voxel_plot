@@ -8,7 +8,7 @@ use bevy::prelude::{
     DetectChangesMut, Handle, Image, Mesh, Mesh3d, Query, Res, ResMut, Resource, Transform, Update,
     Window, With,
 };
-use bevy::render::camera::RenderTarget;
+use bevy::render::camera::{ImageRenderTarget, RenderTarget};
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
@@ -119,6 +119,7 @@ fn voxel_plot_setup(
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
         brightness: 2.0, // Increase this to wash out shadows
+        affects_lightmapped_meshes: false,
     });
 
     let size = Extent3d {
@@ -160,7 +161,7 @@ fn voxel_plot_setup(
                 // render before the "main pass" camera
                 clear_color: ClearColorConfig::Custom(Color::srgba(1.0, 1.0, 1.0, 0.0)),
                 order: -1,
-                target: RenderTarget::Image(image_handle.clone()),
+                target: RenderTarget::Image(ImageRenderTarget::from(image_handle.clone())),
                 ..default()
             },
             Transform::from_translation(Vec3::new(0.0, -150.0, 15.0))
@@ -175,7 +176,7 @@ fn voxel_plot_setup(
     // Note: you probably want to update the `viewport_size` and `window_size` whenever they change,
     // I haven't done this here for simplicity.
     let primary_window = windows
-        .get_single()
+        .single()
         .expect("There is only ever one primary window");
     active_cam.set_if_neq(ActiveCameraData {
         // Set the entity to the entity ID of the camera you want to control. In this case, it's
@@ -277,7 +278,7 @@ fn show_plot(
             .add(egui::Slider::new(&mut opacity_threshold.0, 0.01..=1.0).text("Opacity Threshold"))
             .changed()
         {
-            if let Ok((mut instance_data, mut mesh3d)) = query.get_single_mut() {
+            if let Ok((mut instance_data, mut mesh3d)) = query.single_mut() {
                 instance_data.instances = instances;
                 mesh3d.0 = new_mesh;
                 instance_data
@@ -291,7 +292,7 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
-            EguiPlugin,
+            EguiPlugin { enable_multipass_for_primary_context: false },
             VoxelMaterialPlugin,
             PanOrbitCameraPlugin,
         ))

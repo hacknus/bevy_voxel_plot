@@ -49,9 +49,11 @@ fn load_pcd_file(path: &Path) -> (Vec<InstanceData>, f32, f32, f32) {
             let y: f32 = parts[1].parse().unwrap_or(0.0);
             let z: f32 = parts[2].parse().unwrap_or(0.0);
 
+            let (r,g,b) = jet_colormap(z*10.0);
+
             let instance = InstanceData {
                 pos_scale: [x, y, z, 1.0], // position + uniform scale
-                color: LinearRgba::from(Color::srgba(1.0, 1.0, 1.0, 0.01)).to_f32_array(), // you can set color later if needed
+                color: LinearRgba::from(Color::srgba(r,g,b, 0.01)).to_f32_array(), // you can set color later if needed
             };
 
             instances.push(instance);
@@ -106,6 +108,7 @@ fn voxel_plot_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
         brightness: 2.0, // Increase this to wash out shadows
+        affects_lightmapped_meshes: false,
     });
 
     // camera
