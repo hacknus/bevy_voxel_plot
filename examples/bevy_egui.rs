@@ -40,9 +40,9 @@ fn jet_colormap(value: f32) -> (f32, f32, f32) {
 fn generate_dummy_data() -> (Vec<InstanceData>, f32, f32, f32) {
     let mut instances = vec![];
 
-    let grid_width = 12;
-    let grid_height = 12;
-    let grid_depth = 12;
+    let grid_width = 30;
+    let grid_height = 30;
+    let grid_depth = 30;
     let cube_width = 1.0;
     let cube_height = 1.0;
     let cube_depth = 1.0;
@@ -163,7 +163,7 @@ fn voxel_plot_setup(
                 target: RenderTarget::Image(image_handle.clone()),
                 ..default()
             },
-            Transform::from_translation(Vec3::new(-50.0, 0.0, 15.0))
+            Transform::from_translation(Vec3::new(0.0, -150.0, 15.0))
                 .looking_at(Vec3::ZERO, Vec3::Y),
             PanOrbitCamera::default(),
             first_pass_layer,
