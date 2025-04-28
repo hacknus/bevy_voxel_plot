@@ -154,6 +154,12 @@ fn prepare_instance_buffers(
     for (entity, instance_data) in &query {
         let mut sorted_instances = instance_data.instances.clone();
 
+        if sorted_instances.is_empty() {
+            // No instances, remove any existing buffer or do nothing
+            commands.entity(entity).remove::<InstanceBuffer>();
+            continue;
+        }
+
         // Sort instances by distance from camera (back-to-front)
         sorted_instances.sort_by(|a, b| {
             let a_pos = Vec3::new(a.pos_scale[0], a.pos_scale[1], a.pos_scale[2]);
