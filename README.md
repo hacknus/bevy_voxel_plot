@@ -13,7 +13,8 @@ which also supports opacity control.
 
 Able to plot 2 million voxels on an M2Pro Macbook Pro.
 
-![screenshot](screenshot.png)
+![screenshot_main](screenshot_main.png)
+![screenshot_bunny](screenshot_bunny.png)
 
 ## Examples:
 
@@ -29,6 +30,11 @@ Simple implementation of the Voxel Plot along with the `bevy_panorbit_camera` cr
 
 More advanced implementation of the Voxel Plot along with the `bevy_panorbit_camera` crate inside an `egui` image
 texture, implemented with the `bevy_egui` crate.
+
+- Bevy Pointcloud Bunny
+
+Load the test file `bunny.pcd` from [pcl](https://github.com/PointCloudLibrary/pc) and display it as white voxels with
+low alpha.
 
 ## Version Compatibility
 
