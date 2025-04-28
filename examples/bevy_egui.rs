@@ -83,11 +83,7 @@ fn voxel_plot_setup(
 ) {
     let (instances, cube_width, cube_height, cube_depth) = generate_dummy_data();
 
-    dbg!(&instances.len());
-
     let mut instances: Vec<InstanceData> = instances.into_iter().collect();
-
-    // TODO: needs to be sped up
 
     // Sort by opacity (color alpha channel) descending
     instances.sort_by(|a, b| {
@@ -106,8 +102,6 @@ fn voxel_plot_setup(
         let threshold = instances.last().unwrap().color[3];
         println!("Auto threshold for opacity was: {}", threshold);
     }
-
-    dbg!(&instances.len());
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
