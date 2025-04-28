@@ -4,7 +4,7 @@
 //! `Handle<Material>` and `Handle<Mesh>` for all of your instances.
 //!
 //! This example is intended for advanced users and shows how to make a custom instancing
-//! implementation using bevy's low level rendering api.
+//! implementation using Bevy's low level rendering API.
 //! It's generally recommended to try the built-in instancing before going with this approach.
 
 use bevy::{
@@ -36,11 +36,13 @@ use bevy::{
 };
 use bytemuck::{Pod, Zeroable};
 
-/// This example uses a shader source file from the assets subdirectory
+/// Path to the WGSL shader asset used for custom instancing rendering.
 const SHADER_ASSET_PATH: &str = "shaders/instancing.wgsl";
 
+/// Component holding per-instance data for custom rendering.
 #[derive(Component)]
 pub struct InstanceMaterialData {
+    /// A list of per-instance transform and color data.
     pub instances: Vec<InstanceData>,
 }
 
@@ -56,6 +58,7 @@ impl ExtractComponent for InstanceMaterialData {
     }
 }
 
+/// Plugin that sets up the custom voxel material pipeline.
 pub struct VoxelMaterialPlugin;
 
 impl Plugin for VoxelMaterialPlugin {
@@ -78,13 +81,17 @@ impl Plugin for VoxelMaterialPlugin {
     }
 }
 
+/// Single instance data containing position, scale and color.
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct InstanceData {
-    pub pos_scale: [f32; 4], // x, y, z, scale
+    /// (x, y, z) position and uniform scale.
+    pub pos_scale: [f32; 4],
+    /// RGBA color.
     pub color: [f32; 4],
 }
 
+/// Queues custom rendering commands for entities with `InstanceMaterialData`.
 #[allow(clippy::too_many_arguments)]
 fn queue_custom(
     transparent_3d_draw_functions: Res<DrawFunctions<Transparent3d>>,
@@ -105,9 +112,9 @@ fn queue_custom(
         };
 
         let msaa_key = MeshPipelineKey::from_msaa_samples(msaa.samples());
-
         let view_key = msaa_key | MeshPipelineKey::from_hdr(view.hdr);
         let rangefinder = view.rangefinder3d();
+
         for (entity, main_entity) in &material_meshes {
             let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*main_entity)
             else {
@@ -116,6 +123,7 @@ fn queue_custom(
             let Some(mesh) = meshes.get(mesh_instance.mesh_asset_id) else {
                 continue;
             };
+
             let key =
                 view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
             let pipeline = pipelines
@@ -133,12 +141,14 @@ fn queue_custom(
     }
 }
 
+/// GPU buffer holding instance data ready for rendering.
 #[derive(Component)]
 struct InstanceBuffer {
     buffer: Buffer,
     length: usize,
 }
 
+/// Prepares instance buffers each frame, sorting instances by distance to camera.
 fn prepare_instance_buffers(
     mut commands: Commands,
     query: Query<(Entity, &InstanceMaterialData)>,
@@ -148,23 +158,20 @@ fn prepare_instance_buffers(
     let Some(camera) = cameras.iter().next() else {
         return;
     };
-
     let cam_pos = camera.world_from_view.transform_point(Vec3::ZERO);
 
     for (entity, instance_data) in &query {
         let mut sorted_instances = instance_data.instances.clone();
 
         if sorted_instances.is_empty() {
-            // No instances, remove any existing buffer or do nothing
             commands.entity(entity).remove::<InstanceBuffer>();
             continue;
         }
 
-        // Sort instances by distance from camera (back-to-front)
+        // Sort back-to-front for proper alpha blending
         sorted_instances.sort_by(|a, b| {
             let a_pos = Vec3::new(a.pos_scale[0], a.pos_scale[1], a.pos_scale[2]);
             let b_pos = Vec3::new(b.pos_scale[0], b.pos_scale[1], b.pos_scale[2]);
-
             let a_dist = cam_pos.distance_squared(a_pos);
             let b_dist = cam_pos.distance_squared(b_pos);
 
@@ -186,9 +193,12 @@ fn prepare_instance_buffers(
     }
 }
 
+/// Custom pipeline for instanced mesh rendering.
 #[derive(Resource)]
 struct CustomPipeline {
+    /// The custom shader handle.
     shader: Handle<Shader>,
+    /// Reference to Bevy's default mesh pipeline.
     mesh_pipeline: MeshPipeline,
 }
 
@@ -215,22 +225,12 @@ impl SpecializedMeshPipeline for CustomPipeline {
 
         let color_format = TextureFormat::Rgba8UnormSrgb;
 
-        // Custom depth stencil settings
         descriptor.depth_stencil = Some(DepthStencilState {
             format: TextureFormat::Depth32Float,
             depth_compare: CompareFunction::Always,
-            stencil: StencilState {
-                front: Default::default(),
-                back: Default::default(),
-                read_mask: 0,
-                write_mask: 0,
-            }, // Use default stencil state
+            stencil: StencilState::default(),
             depth_write_enabled: false,
-            bias: DepthBiasState {
-                constant: 0,
-                slope_scale: 0.0,
-                clamp: 0.0,
-            },
+            bias: DepthBiasState::default(),
         });
 
         descriptor.fragment.as_mut().unwrap().targets[0] = Some(ColorTargetState {
@@ -247,7 +247,7 @@ impl SpecializedMeshPipeline for CustomPipeline {
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 0,
-                    shader_location: 3, // shader locations 0-2 are taken up by Position, Normal and UV attributes
+                    shader_location: 3,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
@@ -262,6 +262,7 @@ impl SpecializedMeshPipeline for CustomPipeline {
     }
 }
 
+/// The custom draw command for rendering instances.
 type DrawCustom = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
@@ -269,6 +270,7 @@ type DrawCustom = (
     DrawMeshInstanced,
 );
 
+/// Draws a mesh multiple times using instance buffers.
 struct DrawMeshInstanced;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
@@ -288,7 +290,6 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         (meshes, render_mesh_instances, mesh_allocator): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        // A borrow check workaround.
         let mesh_allocator = mesh_allocator.into_inner();
 
         let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(item.main_entity())
