@@ -1,11 +1,21 @@
 [package]
-name = "bevy_voxel_test"
-version = "0.1.0"
-edition = "2024"
+name = "bevy_voxel_plot"
+version = "1.0.0"
+edition = "2021"
+authors = ["Linus Leo Stöckli"]
+repository = "https://github.com/hacknus/bevy_voxel_plot"
+description = "An efficient voxel plot with support for transparency for bevy."
+readme = "README.md"
+keywords = ["bevy", "gui", "voxel", "plot"]
+categories = ["gui"]
+documentation = "https://docs.rs/bevy_voxel_plot"
+homepage = "https://github.com/hacknus/bevy_voxel_plot"
+license = "Apache-2.0"
 
 [dependencies]
 bevy = "0.15.3"
-bevy_panorbit_camera = { version = "0.22.0" }
 bytemuck = "1.22.0"
-ndarray = { version = "0.16.1", features = ["rayon", "serde"] }
-dotthz = "0.2.11"
+
+[dev-dependencies]
+bevy_panorbit_camera = { version = "0.22.0" }
+bevy_egui = { version = "0.33" }

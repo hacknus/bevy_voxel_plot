@@ -7,8 +7,6 @@
 //! implementation using bevy's low level rendering api.
 //! It's generally recommended to try the built-in instancing before going with this approach.
 
-use std::f32::consts::PI;
-use bevy::render::view::NoFrustumCulling;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
     ecs::{
@@ -20,9 +18,11 @@ use bevy::{
     },
     prelude::*,
     render::{
-        extract_component::{ExtractComponent, ExtractComponentPlugin}, mesh::{
+        extract_component::{ExtractComponent, ExtractComponentPlugin},
+        mesh::{
             allocator::MeshAllocator, MeshVertexBufferLayoutRef, RenderMesh, RenderMeshBufferInfo,
-        }, render_asset::RenderAssets,
+        },
+        render_asset::RenderAssets,
         render_phase::{
             AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
             RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
@@ -31,305 +31,17 @@ use bevy::{
         renderer::RenderDevice,
         sync_world::MainEntity,
         view::ExtractedView,
-        Render,
-        RenderApp,
-        RenderSet,
+        Render, RenderApp, RenderSet,
     },
 };
-use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bytemuck::{Pod, Zeroable};
-use dotthz::DotthzFile;
-use ndarray::{s, Array1, Axis};
-use std::path::Path;
 
 /// This example uses a shader source file from the assets subdirectory
 const SHADER_ASSET_PATH: &str = "shaders/instancing.wgsl";
 
-fn main() {
-    App::new()
-        .add_plugins((DefaultPlugins, CustomMaterialPlugin, PanOrbitCameraPlugin))
-        .add_systems(Startup, setup)
-        .run();
-}
-
-fn generate_dummy_data() -> (Vec<InstanceData>, f32, f32, f32) {
-    let mut instances = vec![];
-
-    let grid_width = 12;
-    let grid_height = 12;
-    let grid_depth = 12;
-    let cube_width = 1.0;
-    let cube_height = 1.0;
-    let cube_depth = 1.0;
-
-    let mut opacity = 0.0;
-    for x in 0..grid_width {
-        for y in 0..grid_height {
-            for z in 0..grid_depth {
-                opacity += 1.0 / (grid_width * grid_height * grid_depth) as f32;
-                let position = Vec3::new(
-                    x as f32 * cube_width - (grid_width as f32 * cube_width) / 2.0,
-                    y as f32 * cube_height - (grid_height as f32 * cube_height) / 2.0,
-                    z as f32 * cube_depth - (grid_depth as f32 * cube_depth) / 2.0,
-                );
-                let instance = InstanceData {
-                    pos_scale: [position.x, position.y, position.z, 1.0],
-                    color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, opacity.powf(2.0)))
-                        .to_f32_array(),
-                };
-                instances.push(instance);
-            }
-        }
-    }
-    (instances, cube_width, cube_height, cube_depth)
-}
-
-// Generate a 1D Gaussian kernel
-fn gaussian_kernel1d(sigma: f32, radius: usize) -> Vec<f32> {
-    let mut kernel = Vec::with_capacity(2 * radius + 1);
-    let norm = 1.0 / (sigma * (2.0 * PI).sqrt());
-    for i in 0..=2 * radius {
-        let x = i as f32 - radius as f32;
-        kernel.push(norm * (-0.5 * (x / sigma).powi(2)).exp());
-    }
-    // Normalize the kernel
-    let sum: f32 = kernel.iter().sum();
-    kernel.iter_mut().for_each(|v| *v /= sum);
-    kernel
-}
-
-// Apply 1D convolution (valid for edge-safe Gaussian)
-fn convolve1d(data: &Array1<f32>, kernel: &[f32]) -> Array1<f32> {
-    let radius = kernel.len() / 2;
-    let mut output = Array1::<f32>::zeros(data.len());
-
-    for i in 0..data.len() {
-        let mut acc = 0.0;
-        for k in 0..kernel.len() {
-            let j = i as isize + k as isize - radius as isize;
-            if j >= 0 && (j as usize) < data.len() {
-                acc += data[j as usize] * kernel[k];
-            }
-        }
-        output[i] = acc;
-    }
-    output
-}
-
-fn jet_colormap(value: f32) -> (f32, f32, f32) {
-    let four_value = 4.0 * value;
-    let r = (four_value - 1.5).clamp(0.0, 1.0);
-    let g = (four_value - 0.5).clamp(0.0, 1.0) - (four_value - 2.5).clamp(0.0, 1.0);
-    let b = 1.0 - (four_value - 1.5).clamp(0.0, 1.0);
-
-    (r, g, b)
-}
-
-fn load_thz() -> (Vec<InstanceData>, f32, f32, f32) {
-    let mut instances = vec![];
-
-    let file_path = Path::new("assets/data/scan.thz");
-    let file = DotthzFile::open(&file_path.to_path_buf()).unwrap();
-
-    let time = file
-        .get_dataset("Image", "ds1")
-        .unwrap()
-        .read_1d::<f32>()
-        .unwrap();
-    let arr = file
-        .get_dataset("Image", "ds2")
-        .unwrap()
-        .read_dyn::<f32>()
-        .unwrap();
-
-    let dataset = arr.into_dimensionality::<ndarray::Ix3>().unwrap();
-
-
-    // Assuming time is a 1D ndarray of f32 values
-    let start = time
-        .iter()
-        .enumerate()
-        .filter(|&(_, &t)| t < 1890.0)
-        .map(|(i, _)| i)
-        .last()
-        .expect("No value in `time` less than 1890");
-
-    let offset = time
-        .iter()
-        .enumerate()
-        .find(|&(_, &t)| t > 1975.0)
-        .map(|(i, _)| i)
-        .expect("No value in `time` greater than 1975");
-
-    // Crop the dataset along the z-axis (3rd axis)
-    let mut dataset = dataset.slice_move(s![.., .., start..offset]);
-
-    // Subtract the first time slice from all slices along z
-    let first_slice = dataset.slice(s![.., .., 0]).to_owned();
-
-    for mut subview in dataset.axis_iter_mut(ndarray::Axis(2)) {
-        subview -= &first_slice;
-    }
-
-    // Crop the time array
-    let time = time.slice(s![start..offset]).to_owned();
-
-    let grid_width = dataset.shape()[0];
-    let grid_height = dataset.shape()[1];
-    let grid_depth = dataset.shape()[2];
-
-    dbg!(&grid_width, &grid_height, &grid_depth);
-
-    let cube_width = 1.0 / 4.0;
-    let cube_height = 1.0 / 4.0;
-
-    let dt = time.last().unwrap() - time.first().unwrap();
-    let c = 300_000_000.0;
-
-    let cube_depth = cube_width / ((dt) * c / 1.0e9 * 2.0);
-
-    dataset = dataset.powf(2.0);
-
-    // Inside your main dataset loop:
-    for x in 0..grid_width {
-        for y in 0..grid_height {
-            // Extract the z-axis slice at (x, y)
-            let mut line = dataset.slice(s![x, y, ..]).to_owned();
-
-            // Square values (p ** 2)
-            line.mapv_inplace(|v| v.powi(2));
-
-            // Create Gaussian kernel
-            let kernel = gaussian_kernel1d(3.0, 9);
-
-            // Convolve along z
-            let envelope = convolve1d(&line, &kernel);
-
-            // (Optional) Write the result back into dataset
-            for z in 0..grid_depth {
-                dataset[[x, y, z]] = envelope[z];
-            }
-        }
-    }
-
-    // Normalize along z-axis
-    for x in 0..grid_width {
-        for y in 0..grid_height {
-            let z_values: Vec<f32> = (0..grid_depth)
-                .map(|z| dataset[[x, y, z]])
-                .collect();
-
-            // Compute min and max for normalization
-            let min = z_values.iter().cloned().fold(f32::INFINITY, f32::min);
-            let max = z_values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-
-            // Avoid division by zero
-            if max != min {
-                for z in 0..grid_depth {
-                    dataset[[x, y, z]] = (dataset[[x, y, z]] - min) / (max - min);
-                }
-            } else {
-                // All values are the same, set to 0.0 (or 1.0 – your call)
-                for z in 0..grid_depth {
-                    dataset[[x, y, z]] = 0.0;
-                }
-            }
-        }
-    }
-
-    let maxval = dataset.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    dbg!(&maxval);
-
-    for z in 0..grid_depth {
-        for y in 0..grid_height {
-            for x in 0..grid_width {
-                // Calculate the position based on the indices (x, y, z)
-                let position = Vec3::new(
-                    x as f32 * cube_width - (grid_width as f32 * cube_width) / 2.0,
-                    y as f32 * cube_height - (grid_height as f32 * cube_height) / 2.0,
-                    z as f32 * cube_depth - (grid_depth as f32 * cube_depth) / 2.0,
-                );
-
-                let mut opacity = *dataset
-                    .index_axis(Axis(0), x)
-                    .index_axis(Axis(0), y)
-                    .index_axis(Axis(0), z).into_scalar();
-                opacity = opacity.powf(2.0);
-
-                let (r, g, b) = jet_colormap(opacity);
-
-                // Create the instance data with the calculated position and opacity
-                let instance = InstanceData {
-                    pos_scale: [position.x, position.y, position.z, 1.0],
-                    color: LinearRgba::from(Color::srgba(r,g,b, opacity)).to_f32_array(),
-                };
-
-                // Push the instance into the vector
-                instances.push(instance);
-            }
-        }
-    }
-
-    dbg!(&cube_width, &cube_height, &cube_depth);
-
-    (instances, cube_width, cube_height, cube_depth)
-}
-
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    let (instances, cube_width, cube_height, cube_depth) = load_thz();
-
-    dbg!(&instances.len());
-
-    let mut instances: Vec<InstanceData> = instances
-        .into_iter()
-        .collect();
-
-    // Sort by opacity (color alpha channel) descending
-    instances.sort_by(|a, b| {
-        b.color[3].partial_cmp(&a.color[3]).unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    // Truncate to top 2 million most opaque points
-    const MAX_INSTANCES: usize = 2_000_000;
-    if instances.len() > MAX_INSTANCES {
-        instances.truncate(MAX_INSTANCES);
-    }
-
-    if instances.len() == MAX_INSTANCES {
-        let threshold = instances.last().unwrap().color[3];
-        println!("Auto threshold for opacity was: {}", threshold);
-    }
-
-    dbg!(&instances.len());
-
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
-        InstanceMaterialData { instances },
-        // NOTE: Frustum culling is done based on the Aabb of the Mesh and the GlobalTransform.
-        // As the cube is at the origin, if its Aabb moves outside the view frustum, all the
-        // instanced cubes will be culled.
-        // The InstanceMaterialData contains the 'GlobalTransform' information for this custom
-        // instancing, and that is not taken into account with the built-in frustum culling.
-        // We must disable the built-in frustum culling by adding the `NoFrustumCulling` marker
-        // component to avoid incorrect culling.
-        NoFrustumCulling,
-    ));
-
-    commands.insert_resource(AmbientLight {
-        color: Color::WHITE,
-        brightness: 2.0, // Increase this to wash out shadows
-    });
-
-    // camera
-    commands.spawn((
-        Transform::from_translation(Vec3::new(0.0, -400.0, 0.0)),
-        PanOrbitCamera::default(),
-    ));
-}
-
 #[derive(Component)]
-struct InstanceMaterialData {
-    instances: Vec<InstanceData>,
+pub struct InstanceMaterialData {
+    pub instances: Vec<InstanceData>,
 }
 
 impl ExtractComponent for InstanceMaterialData {
@@ -344,9 +56,9 @@ impl ExtractComponent for InstanceMaterialData {
     }
 }
 
-struct CustomMaterialPlugin;
+pub struct VoxelMaterialPlugin;
 
-impl Plugin for CustomMaterialPlugin {
+impl Plugin for VoxelMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstanceMaterialData>::default());
         app.sub_app_mut(RenderApp)
@@ -368,9 +80,9 @@ impl Plugin for CustomMaterialPlugin {
 
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
-struct InstanceData {
-    pos_scale: [f32; 4], // x, y, z, scale
-    color: [f32; 4],
+pub struct InstanceData {
+    pub pos_scale: [f32; 4], // x, y, z, scale
+    pub color: [f32; 4],
 }
 
 #[allow(clippy::too_many_arguments)]
