@@ -41,7 +41,7 @@ low alpha.
 | bevy | bevy_voxel_plot |
 |------|-----------------|
 | 0.16 | TBD             |
-| 0.15 | 0.1             |
+| 0.15 | 1.0             |
 
 ## Credits
 
