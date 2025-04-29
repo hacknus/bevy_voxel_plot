@@ -8,7 +8,7 @@ All notable changes to the `bevy voxel plot` crate will be documented in this fi
 
 * ...
 
-# 2.0.0
+# 2.0.1
 
 * Update to Bevy 0.16
 
