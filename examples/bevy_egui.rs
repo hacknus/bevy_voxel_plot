@@ -292,7 +292,9 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
-            EguiPlugin { enable_multipass_for_primary_context: false },
+            EguiPlugin {
+                enable_multipass_for_primary_context: false,
+            },
             VoxelMaterialPlugin,
             PanOrbitCameraPlugin,
         ))

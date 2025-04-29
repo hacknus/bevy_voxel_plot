@@ -43,6 +43,8 @@ low alpha.
 | 0.16 | 2.0             |
 | 0.15 | 1.0             |
 
+Note: version 1.0 requires the shader to be copied in your directory (did only fix that from 2.1+ )
+
 ## Credits
 
 - [Bevy](https://bevyengine.org)

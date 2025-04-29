@@ -7,6 +7,7 @@
 //! implementation using Bevy's low level rendering API.
 //! It's generally recommended to try the built-in instancing before going with this approach.
 
+use bevy::asset::{load_internal_asset, weak_handle};
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
     ecs::{
@@ -36,9 +37,6 @@ use bevy::{
 };
 use bytemuck::{Pod, Zeroable};
 
-/// Path to the WGSL shader asset used for custom instancing rendering.
-const SHADER_ASSET_PATH: &str = "shaders/instancing.wgsl";
-
 /// Component holding per-instance data for custom rendering.
 #[derive(Component)]
 pub struct InstanceMaterialData {
@@ -61,6 +59,7 @@ impl ExtractComponent for InstanceMaterialData {
 /// Plugin that sets up the custom voxel material pipeline.
 pub struct VoxelMaterialPlugin;
 
+pub const SHADER_HANDLE: Handle<Shader> = weak_handle!("123e4567-e89b-12d3-a456-426614174000");
 impl Plugin for VoxelMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstanceMaterialData>::default());
@@ -74,6 +73,12 @@ impl Plugin for VoxelMaterialPlugin {
                     prepare_instance_buffers.in_set(RenderSet::PrepareResources),
                 ),
             );
+        load_internal_asset!(
+            app,
+            SHADER_HANDLE,
+            "../assets/shaders/instancing.wgsl",
+            Shader::from_wgsl
+        );
     }
 
     fn finish(&self, app: &mut App) {
@@ -206,11 +211,11 @@ struct CustomPipeline {
 
 impl FromWorld for CustomPipeline {
     fn from_world(world: &mut World) -> Self {
-        let mesh_pipeline = world.resource::<MeshPipeline>();
+        let mesh_pipeline = world.resource::<MeshPipeline>().clone();
 
         CustomPipeline {
-            shader: world.load_asset(SHADER_ASSET_PATH),
-            mesh_pipeline: mesh_pipeline.clone(),
+            shader: SHADER_HANDLE.clone(),
+            mesh_pipeline,
         }
     }
 }
