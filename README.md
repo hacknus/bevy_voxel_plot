@@ -33,14 +33,14 @@ texture, implemented with the `bevy_egui` crate.
 
 - Bevy Pointcloud Bunny
 
-Load the test file `bunny.pcd` from [pcl](https://github.com/PointCloudLibrary/pc) and display it as white voxels with
+Load the test file `bunny.pcd` from [pcl](https://github.com/PointCloudLibrary/pc) and display it as colorful voxels with
 low alpha.
 
 ## Version Compatibility
 
 | bevy | bevy_voxel_plot |
 |------|-----------------|
-| 0.16 | TBD             |
+| 0.16 | 2.0             |
 | 0.15 | 1.0             |
 
 ## Credits

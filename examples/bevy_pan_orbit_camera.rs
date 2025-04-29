@@ -92,6 +92,7 @@ fn voxel_plot_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
         brightness: 2.0, // Increase this to wash out shadows
+        affects_lightmapped_meshes: false,
     });
 
     // camera
