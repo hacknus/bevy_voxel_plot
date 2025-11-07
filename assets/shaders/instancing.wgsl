@@ -17,6 +17,7 @@ struct VertexOutput {
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
+    // NOTE: Assumes vertex positions are real world positions
     let world_position = vertex.position * vertex.i_pos_scale.w + vertex.i_pos_scale.xyz;
 
     var out: VertexOutput;
