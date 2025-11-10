@@ -6,7 +6,7 @@ All notable changes to the `bevy voxel plot` crate will be documented in this fi
 
 ### Added:
 
-* ...
+* Assume voxel vertices are real world coordinates in shader.
 
 # 2.0.1
 
