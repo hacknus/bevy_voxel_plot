@@ -86,11 +86,11 @@ fn voxel_plot_setup(
     let mut instances: Vec<InstanceData> = instances.into_iter().collect();
 
     // Sort by opacity (color alpha channel) descending
-    instances.sort_by(|a, b| {
-        b.color[3]
-            .partial_cmp(&a.color[3])
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // instances.sort_by(|a, b| {
+    //     b.color[3]
+    //         .partial_cmp(&a.color[3])
+    //         .unwrap_or(std::cmp::Ordering::Equal)
+    // });
 
     // Truncate to top 2 million most opaque points
     const MAX_INSTANCES: usize = 1_000_000;
@@ -102,6 +102,7 @@ fn voxel_plot_setup(
         let threshold = instances.last().unwrap().color[3];
         println!("Auto threshold for opacity was: {}", threshold);
     }
+    let first_pass_layer = RenderLayers::layer(1);
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
@@ -114,6 +115,7 @@ fn voxel_plot_setup(
         // We must disable the built-in frustum culling by adding the `NoFrustumCulling` marker
         // component to avoid incorrect culling.
         NoFrustumCulling,
+        first_pass_layer.clone(),
     ));
 
     commands.insert_resource(AmbientLight {
@@ -153,7 +155,6 @@ fn voxel_plot_setup(
     commands.insert_resource(RenderImage(image_handle.clone()));
 
     // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
-    let first_pass_layer = RenderLayers::layer(0);
 
     let pan_orbit_id = commands
         .spawn((

@@ -63,6 +63,8 @@ pub const SHADER_HANDLE: Handle<Shader> = weak_handle!("123e4567-e89b-12d3-a456-
 impl Plugin for VoxelMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstanceMaterialData>::default());
+        app.add_plugins(ExtractComponentPlugin::<CameraPosition>::default()); // Add this line
+
         app.sub_app_mut(RenderApp)
             .add_render_command::<Transparent3d, DrawCustom>()
             .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
@@ -85,6 +87,7 @@ impl Plugin for VoxelMaterialPlugin {
         app.sub_app_mut(RenderApp).init_resource::<CustomPipeline>();
     }
 }
+
 
 /// Single instance data containing position, scale and color.
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -155,19 +158,35 @@ struct InstanceBuffer {
     length: usize,
 }
 
+#[derive(Component, Clone)]
+struct CameraPosition(Vec3);
+
+impl ExtractComponent for CameraPosition {
+    type QueryData = &'static GlobalTransform;
+    type QueryFilter = With<Camera3d>;
+    type Out = Self;
+
+    fn extract_component(transform: QueryItem<'_, Self::QueryData>) -> Option<Self> {
+        Some(CameraPosition(transform.translation()))
+    }
+}
+
+
 /// Prepares instance buffers each frame, sorting instances by distance to camera.
 fn prepare_instance_buffers(
     mut commands: Commands,
     query: Query<(Entity, &InstanceMaterialData)>,
     render_device: Res<RenderDevice>,
-    views: Query<&GlobalTransform, With<Camera>>,
+    camera_query: Query<&CameraPosition>,
 ) {
-    // Get the first camera's position, or use a default if none exist
-    let camera_pos = views
+    let camera_pos = camera_query
         .iter()
         .next()
-        .map(|transform| transform.translation())
+        .map(|pos| pos.0)
         .unwrap_or(Vec3::ZERO);
+
+    // // Debug: Print camera position
+    // println!("Camera position: {:?}", camera_pos);
 
     for (entity, instance_data) in &query {
         if instance_data.instances.is_empty() {
@@ -175,13 +194,20 @@ fn prepare_instance_buffers(
             continue;
         }
 
-        // Sort back-to-front by distance from camera
         let mut sorted_instances = instance_data.instances.clone();
         sorted_instances.sort_by(|a, b| {
             let dist_a = camera_pos.distance_squared(Vec3::from_slice(&a.pos_scale[0..3]));
             let dist_b = camera_pos.distance_squared(Vec3::from_slice(&b.pos_scale[0..3]));
             dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
         });
+
+        // Debug: Print instance order and distances
+        // println!("Sorted instances (far to near):");
+        // for inst in &sorted_instances {
+        //     let pos = Vec3::from_slice(&inst.pos_scale[0..3]);
+        //     let dist = camera_pos.distance(pos);
+        //     println!("  pos: {:?}, distance: {:.3}, color: {:?}", pos, dist, inst.color);
+        // }
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("instance data buffer"),
@@ -239,7 +265,18 @@ impl SpecializedMeshPipeline for CustomPipeline {
 
         descriptor.fragment.as_mut().unwrap().targets[0] = Some(ColorTargetState {
             format: color_format,
-            blend: Some(BlendState::ALPHA_BLENDING),
+            blend: Some(BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::SrcAlpha,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::SrcAlpha,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            }),
             write_mask: ColorWrites::ALL,
         });
 
