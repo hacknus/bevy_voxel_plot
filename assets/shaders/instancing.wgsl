@@ -1,4 +1,3 @@
-#import bevy_pbr::mesh_functions::{mesh_position_local_to_world}
 #import bevy_pbr::view_transformations::position_world_to_clip
 
 struct Vertex {

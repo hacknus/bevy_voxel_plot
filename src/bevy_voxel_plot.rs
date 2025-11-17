@@ -159,36 +159,32 @@ struct InstanceBuffer {
 fn prepare_instance_buffers(
     mut commands: Commands,
     query: Query<(Entity, &InstanceMaterialData)>,
-    cameras: Query<&ExtractedView>,
     render_device: Res<RenderDevice>,
+    views: Query<&GlobalTransform, With<Camera>>,
 ) {
-    let Some(camera) = cameras.iter().next() else {
-        return;
-    };
-    let cam_pos = camera.world_from_view.transform_point(Vec3::ZERO);
+    // Get the first camera's position, or use a default if none exist
+    let camera_pos = views
+        .iter()
+        .next()
+        .map(|transform| transform.translation())
+        .unwrap_or(Vec3::ZERO);
 
     for (entity, instance_data) in &query {
-        let mut sorted_instances = instance_data.instances.clone();
-
-        if sorted_instances.is_empty() {
+        if instance_data.instances.is_empty() {
             commands.entity(entity).remove::<InstanceBuffer>();
             continue;
         }
 
-        // Sort back-to-front for proper alpha blending
+        // Sort back-to-front by distance from camera
+        let mut sorted_instances = instance_data.instances.clone();
         sorted_instances.sort_by(|a, b| {
-            let a_pos = Vec3::new(a.pos_scale[0], a.pos_scale[1], a.pos_scale[2]);
-            let b_pos = Vec3::new(b.pos_scale[0], b.pos_scale[1], b.pos_scale[2]);
-            let a_dist = cam_pos.distance_squared(a_pos);
-            let b_dist = cam_pos.distance_squared(b_pos);
-
-            b_dist
-                .partial_cmp(&a_dist)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            let dist_a = camera_pos.distance_squared(Vec3::from_slice(&a.pos_scale[0..3]));
+            let dist_b = camera_pos.distance_squared(Vec3::from_slice(&b.pos_scale[0..3]));
+            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("sorted instance data buffer"),
+            label: Some("instance data buffer"),
             contents: bytemuck::cast_slice(sorted_instances.as_slice()),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
@@ -199,6 +195,7 @@ fn prepare_instance_buffers(
         });
     }
 }
+
 
 /// Custom pipeline for instanced mesh rendering.
 #[derive(Resource)]
