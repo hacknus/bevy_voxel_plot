@@ -63,6 +63,8 @@ pub const SHADER_HANDLE: Handle<Shader> = weak_handle!("123e4567-e89b-12d3-a456-
 impl Plugin for VoxelMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstanceMaterialData>::default());
+        app.add_plugins(ExtractComponentPlugin::<CameraPosition>::default()); // Add this line
+
         app.sub_app_mut(RenderApp)
             .add_render_command::<Transparent3d, DrawCustom>()
             .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
@@ -85,6 +87,7 @@ impl Plugin for VoxelMaterialPlugin {
         app.sub_app_mut(RenderApp).init_resource::<CustomPipeline>();
     }
 }
+
 
 /// Single instance data containing position, scale and color.
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -155,40 +158,59 @@ struct InstanceBuffer {
     length: usize,
 }
 
+#[derive(Component, Clone)]
+struct CameraPosition(Vec3);
+
+impl ExtractComponent for CameraPosition {
+    type QueryData = &'static GlobalTransform;
+    type QueryFilter = With<Camera3d>;
+    type Out = Self;
+
+    fn extract_component(transform: QueryItem<'_, Self::QueryData>) -> Option<Self> {
+        Some(CameraPosition(transform.translation()))
+    }
+}
+
+
 /// Prepares instance buffers each frame, sorting instances by distance to camera.
 fn prepare_instance_buffers(
     mut commands: Commands,
     query: Query<(Entity, &InstanceMaterialData)>,
-    cameras: Query<&ExtractedView>,
     render_device: Res<RenderDevice>,
+    camera_query: Query<&CameraPosition>,
 ) {
-    let Some(camera) = cameras.iter().next() else {
-        return;
-    };
-    let cam_pos = camera.world_from_view.transform_point(Vec3::ZERO);
+    let camera_pos = camera_query
+        .iter()
+        .next()
+        .map(|pos| pos.0)
+        .unwrap_or(Vec3::ZERO);
+
+    // // Debug: Print camera position
+    // println!("Camera position: {:?}", camera_pos);
 
     for (entity, instance_data) in &query {
-        let mut sorted_instances = instance_data.instances.clone();
-
-        if sorted_instances.is_empty() {
+        if instance_data.instances.is_empty() {
             commands.entity(entity).remove::<InstanceBuffer>();
             continue;
         }
 
-        // Sort back-to-front for proper alpha blending
+        let mut sorted_instances = instance_data.instances.clone();
         sorted_instances.sort_by(|a, b| {
-            let a_pos = Vec3::new(a.pos_scale[0], a.pos_scale[1], a.pos_scale[2]);
-            let b_pos = Vec3::new(b.pos_scale[0], b.pos_scale[1], b.pos_scale[2]);
-            let a_dist = cam_pos.distance_squared(a_pos);
-            let b_dist = cam_pos.distance_squared(b_pos);
-
-            b_dist
-                .partial_cmp(&a_dist)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            let dist_a = camera_pos.distance_squared(Vec3::from_slice(&a.pos_scale[0..3]));
+            let dist_b = camera_pos.distance_squared(Vec3::from_slice(&b.pos_scale[0..3]));
+            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
+        // Debug: Print instance order and distances
+        // println!("Sorted instances (far to near):");
+        // for inst in &sorted_instances {
+        //     let pos = Vec3::from_slice(&inst.pos_scale[0..3]);
+        //     let dist = camera_pos.distance(pos);
+        //     println!("  pos: {:?}, distance: {:.3}, color: {:?}", pos, dist, inst.color);
+        // }
+
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("sorted instance data buffer"),
+            label: Some("instance data buffer"),
             contents: bytemuck::cast_slice(sorted_instances.as_slice()),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
@@ -199,6 +221,7 @@ fn prepare_instance_buffers(
         });
     }
 }
+
 
 /// Custom pipeline for instanced mesh rendering.
 #[derive(Resource)]
@@ -242,7 +265,18 @@ impl SpecializedMeshPipeline for CustomPipeline {
 
         descriptor.fragment.as_mut().unwrap().targets[0] = Some(ColorTargetState {
             format: color_format,
-            blend: Some(BlendState::ALPHA_BLENDING),
+            blend: Some(BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::SrcAlpha,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::SrcAlpha,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            }),
             write_mask: ColorWrites::ALL,
         });
 
