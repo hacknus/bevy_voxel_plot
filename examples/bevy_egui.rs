@@ -102,7 +102,7 @@ fn voxel_plot_setup(
         let threshold = instances.last().unwrap().color[3];
         println!("Auto threshold for opacity was: {}", threshold);
     }
-    let first_pass_layer = RenderLayers::layer(1);
+    let first_pass_layer = RenderLayers::layer(0);
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(cube_width, cube_height, cube_depth))),
@@ -115,7 +115,6 @@ fn voxel_plot_setup(
         // We must disable the built-in frustum culling by adding the `NoFrustumCulling` marker
         // component to avoid incorrect culling.
         NoFrustumCulling,
-        first_pass_layer.clone(),
     ));
 
     commands.insert_resource(AmbientLight {
