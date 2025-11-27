@@ -7,7 +7,9 @@
 //! implementation using Bevy's low level rendering API.
 //! It's generally recommended to try the built-in instancing before going with this approach.
 
-use bevy::asset::{load_internal_asset, weak_handle};
+use bevy::asset::{load_internal_asset, uuid_handle};
+use bevy::mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout};
+use bevy::render::RenderSystems;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
     ecs::{
@@ -20,9 +22,7 @@ use bevy::{
     prelude::*,
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
-        mesh::{
-            allocator::MeshAllocator, MeshVertexBufferLayoutRef, RenderMesh, RenderMeshBufferInfo,
-        },
+        mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
         render_phase::{
             AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
@@ -32,9 +32,10 @@ use bevy::{
         renderer::RenderDevice,
         sync_world::MainEntity,
         view::ExtractedView,
-        Render, RenderApp, RenderSet,
+        Render, RenderApp,
     },
 };
+use bevy::pbr::SetMeshViewBindingArrayBindGroup;
 use bytemuck::{Pod, Zeroable};
 
 /// Component holding per-instance data for custom rendering.
@@ -49,7 +50,7 @@ impl ExtractComponent for InstanceMaterialData {
     type QueryFilter = ();
     type Out = Self;
 
-    fn extract_component(item: QueryItem<'_, Self::QueryData>) -> Option<Self> {
+    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self> {
         Some(InstanceMaterialData {
             instances: item.instances.clone(),
         })
@@ -59,7 +60,7 @@ impl ExtractComponent for InstanceMaterialData {
 /// Plugin that sets up the custom voxel material pipeline.
 pub struct VoxelMaterialPlugin;
 
-pub const SHADER_HANDLE: Handle<Shader> = weak_handle!("123e4567-e89b-12d3-a456-426614174000");
+pub const SHADER_HANDLE: Handle<Shader> = uuid_handle!("123e4567-e89b-12d3-a456-426614174000");
 impl Plugin for VoxelMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstanceMaterialData>::default());
@@ -71,8 +72,8 @@ impl Plugin for VoxelMaterialPlugin {
             .add_systems(
                 Render,
                 (
-                    queue_custom.in_set(RenderSet::QueueMeshes),
-                    prepare_instance_buffers.in_set(RenderSet::PrepareResources),
+                    queue_custom.in_set(RenderSystems::QueueMeshes),
+                    prepare_instance_buffers.in_set(RenderSystems::PrepareResources),
                 ),
             );
         load_internal_asset!(
@@ -88,13 +89,14 @@ impl Plugin for VoxelMaterialPlugin {
     }
 }
 
-
 /// Single instance data containing position, scale and color.
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct InstanceData {
-    /// (x, y, z) position and uniform scale.
-    pub pos_scale: [f32; 4],
+    /// (x, y, z) position
+    pub position: [f32; 3],
+    /// Uniform scale
+    pub scale: f32,
     /// RGBA color.
     pub color: [f32; 4],
 }
@@ -166,11 +168,10 @@ impl ExtractComponent for CameraPosition {
     type QueryFilter = With<Camera3d>;
     type Out = Self;
 
-    fn extract_component(transform: QueryItem<'_, Self::QueryData>) -> Option<Self> {
+    fn extract_component(transform: QueryItem<'_, '_, Self::QueryData>) -> Option<Self> {
         Some(CameraPosition(transform.translation()))
     }
 }
-
 
 /// Prepares instance buffers each frame, sorting instances by distance to camera.
 fn prepare_instance_buffers(
@@ -196,9 +197,11 @@ fn prepare_instance_buffers(
 
         let mut sorted_instances = instance_data.instances.clone();
         sorted_instances.sort_by(|a, b| {
-            let dist_a = camera_pos.distance_squared(Vec3::from_slice(&a.pos_scale[0..3]));
-            let dist_b = camera_pos.distance_squared(Vec3::from_slice(&b.pos_scale[0..3]));
-            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+            let dist_a = camera_pos.distance_squared(Vec3::from_slice(&a.position));
+            let dist_b = camera_pos.distance_squared(Vec3::from_slice(&b.position));
+            dist_b
+                .partial_cmp(&dist_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Debug: Print instance order and distances
@@ -221,7 +224,6 @@ fn prepare_instance_buffers(
         });
     }
 }
-
 
 /// Custom pipeline for instanced mesh rendering.
 #[derive(Resource)]
@@ -307,7 +309,8 @@ impl SpecializedMeshPipeline for CustomPipeline {
 type DrawCustom = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetMeshBindGroup<1>,
+    SetMeshViewBindingArrayBindGroup<1>,
+    SetMeshBindGroup<2>,
     DrawMeshInstanced,
 );
 

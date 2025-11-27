@@ -1,10 +1,9 @@
 use bevy::app::{App, Startup};
 use bevy::asset::Assets;
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::color::{Color, LinearRgba};
 use bevy::math::Vec3;
-use bevy::pbr::AmbientLight;
-use bevy::prelude::{ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform};
-use bevy::render::view::NoFrustumCulling;
+use bevy::prelude::{AmbientLight, ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform};
 use bevy::DefaultPlugins;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
@@ -42,7 +41,8 @@ fn generate_dummy_data() -> (Vec<InstanceData>, f32, f32, f32) {
                 let (r, g, b) = jet_colormap(opacity);
 
                 let instance = InstanceData {
-                    pos_scale: [position.x, position.y, position.z, 1.0],
+                    position: [position.x, position.y, position.z],
+                    scale: 1.0,
                     color: LinearRgba::from(Color::srgba(r, g, b, opacity.powf(2.0)))
                         .to_f32_array(),
                 };

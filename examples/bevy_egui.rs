@@ -1,22 +1,17 @@
 use bevy::app::{App, Startup};
 use bevy::asset::Assets;
+use bevy::camera::{ImageRenderTarget, RenderTarget};
+use bevy::camera::visibility::{NoFrustumCulling, RenderLayers};
 use bevy::color::{Color, LinearRgba};
 use bevy::math::{Vec2, Vec3};
-use bevy::pbr::AmbientLight;
-use bevy::prelude::{
-    default, Camera, ClearColorConfig, ColorToComponents, Commands, Cuboid, Deref,
-    DetectChangesMut, Handle, Image, Mesh, Mesh3d, Query, Res, ResMut, Resource, Transform, Update,
-    Window, With,
-};
-use bevy::render::camera::{ImageRenderTarget, RenderTarget};
+use bevy::prelude::{default, AmbientLight, Camera, Camera2d, ClearColorConfig, ColorToComponents, Commands, Cuboid, Deref, DetectChangesMut, Handle, Image, IntoScheduleConfigs, Mesh, Mesh3d, PreStartup, Query, Res, ResMut, Resource, Transform, Update, Window, With};
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
-use bevy::render::view::{NoFrustumCulling, RenderLayers};
 use bevy::window::PrimaryWindow;
 use bevy::DefaultPlugins;
 use bevy_egui::egui::{epaint, Ui};
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiStartupSet, EguiUserTextures};
 use bevy_panorbit_camera::{ActiveCameraData, PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
 
@@ -62,7 +57,8 @@ fn generate_dummy_data() -> (Vec<InstanceData>, f32, f32, f32) {
                 let (r, g, b) = jet_colormap(opacity);
 
                 let instance = InstanceData {
-                    pos_scale: [position.x, position.y, position.z, 1.0],
+                    position: [position.x, position.y, position.z],
+                    scale: 1.0,
                     color: LinearRgba::from(Color::srgba(r, g, b, opacity.powf(2.0)))
                         .to_f32_array(),
                 };
@@ -150,7 +146,7 @@ fn voxel_plot_setup(
     image.resize(size);
 
     let image_handle = images.add(image);
-    egui_user_textures.add_image(image_handle.clone());
+    egui_user_textures.add_image(bevy_egui::EguiTextureHandle::Strong(image_handle.clone()));
     commands.insert_resource(RenderImage(image_handle.clone()));
 
     // This specifies the layer used for the first pass, which will be attached to the first pass camera and cube.
@@ -209,25 +205,26 @@ pub fn update_gui(
     mut opacity_threshold: ResMut<OpacityThreshold>,
     mut cam_input: ResMut<CameraInputAllowed>,
 ) {
-    let cube_preview_texture_id = contexts.image_id(&cube_preview_image).unwrap();
-
-    let ctx = contexts.ctx_mut();
+    let cube_preview_texture_id = contexts.image_id(&cube_preview_image.0).unwrap();
 
     let width = 300.0;
     let height = 500.0;
 
-    egui::CentralPanel::default().show(ctx, |ui| {
-        show_plot(
-            &mut meshes,
-            &cube_preview_texture_id,
-            width,
-            height,
-            ui,
-            &mut query,
-            &mut opacity_threshold,
-            &mut cam_input,
-        )
-    });
+    if let Ok(ctx) = contexts.ctx_mut() {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            show_plot(
+                &mut meshes,
+                &cube_preview_texture_id,
+                width,
+                height,
+                ui,
+                &mut query,
+                &mut opacity_threshold,
+                &mut cam_input,
+            )
+        });
+    }
+
 }
 fn show_plot(
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -288,20 +285,27 @@ fn show_plot(
         }
     });
 }
+
+fn setup_camera(mut commands: Commands) {
+    // camera required by bevy-egui
+    commands.spawn(Camera2d);
+}
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
-            EguiPlugin {
-                enable_multipass_for_primary_context: false,
-            },
+            EguiPlugin::default(),
             VoxelMaterialPlugin,
             PanOrbitCameraPlugin,
         ))
         .insert_resource(OpacityThreshold(0.0)) // Start with no threshold
         .insert_resource(CameraInputAllowed(false))
         .add_systems(Startup, voxel_plot_setup)
-        .add_systems(Update, update_gui)
+        .add_systems(
+            PreStartup,
+            setup_camera.before(EguiStartupSet::InitContexts),
+        )
+        .add_systems(EguiPrimaryContextPass, update_gui)
         .add_systems(Update, set_enable_camera_controls_system)
         .run();
 }

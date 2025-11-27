@@ -1,10 +1,11 @@
 use bevy::app::{App, Startup};
 use bevy::asset::Assets;
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::color::{Color, LinearRgba};
 use bevy::math::Vec3;
-use bevy::pbr::AmbientLight;
-use bevy::prelude::{ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform};
-use bevy::render::view::NoFrustumCulling;
+use bevy::prelude::{
+    AmbientLight, ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform,
+};
 use bevy::DefaultPlugins;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
@@ -52,7 +53,8 @@ fn load_pcd_file(path: &Path) -> (Vec<InstanceData>, f32, f32, f32) {
             let (r, g, b) = jet_colormap(z * 10.0);
 
             let instance = InstanceData {
-                pos_scale: [x, y, z, 1.0], // position + uniform scale
+                position: [x, y, z], // position + uniform scale
+                scale: 1.0,
                 color: LinearRgba::from(Color::srgba(r, g, b, 0.01)).to_f32_array(), // you can set color later if needed
             };
 
