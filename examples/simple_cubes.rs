@@ -1,6 +1,6 @@
 use bevy::prelude::*;
-use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     // Two cubes: one red (alpha 1.0), one blue (alpha 0.5)
@@ -8,29 +8,23 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
         InstanceData {
             position: [0.0, 0.0, 0.0],
             scale: 1.0,
-            color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, 0.5))
-                .to_f32_array()
+            color: LinearRgba::from(Color::srgba(1.0, 0.0, 0.0, 0.5)).to_f32_array(),
         },
         InstanceData {
             position: [0.3, 0.0, 0.0],
             scale: 1.0,
-            color: LinearRgba::from(Color::srgba(0.0, 1.0, 0.0, 0.5))
-                .to_f32_array()
+            color: LinearRgba::from(Color::srgba(0.0, 1.0, 0.0, 0.5)).to_f32_array(),
         },
         InstanceData {
             position: [0.6, 0.0, 0.0],
-            scale:1.0,
-            color: LinearRgba::from(Color::srgba(0.0, 0.0, 1.0, 0.5))
-                .to_f32_array()
+            scale: 1.0,
+            color: LinearRgba::from(Color::srgba(0.0, 0.0, 1.0, 0.5)).to_f32_array(),
         },
     ];
 
     let cube_mesh = meshes.add(Cuboid::new(0.2, 0.2, 0.2));
 
-    commands.spawn((
-        Mesh3d(cube_mesh),
-        InstanceMaterialData { instances },
-    ));
+    commands.spawn((Mesh3d(cube_mesh), InstanceMaterialData { instances }));
 
     commands.spawn(AmbientLight {
         color: Color::WHITE,

@@ -9,6 +9,7 @@
 
 use bevy::asset::{load_internal_asset, uuid_handle};
 use bevy::mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout};
+use bevy::pbr::SetMeshViewBindingArrayBindGroup;
 use bevy::render::RenderSystems;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
@@ -35,7 +36,6 @@ use bevy::{
         Render, RenderApp,
     },
 };
-use bevy::pbr::SetMeshViewBindingArrayBindGroup;
 use bytemuck::{Pod, Zeroable};
 
 /// Component holding per-instance data for custom rendering.

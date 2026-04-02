@@ -3,7 +3,9 @@ use bevy::asset::Assets;
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::color::{Color, LinearRgba};
 use bevy::math::Vec3;
-use bevy::prelude::{AmbientLight, ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform};
+use bevy::prelude::{
+    AmbientLight, ColorToComponents, Commands, Cuboid, Mesh, Mesh3d, ResMut, Transform,
+};
 use bevy::DefaultPlugins;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};

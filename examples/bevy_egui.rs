@@ -1,17 +1,23 @@
 use bevy::app::{App, Startup};
 use bevy::asset::Assets;
-use bevy::camera::{ImageRenderTarget, RenderTarget};
 use bevy::camera::visibility::{NoFrustumCulling, RenderLayers};
+use bevy::camera::{ImageRenderTarget, RenderTarget};
 use bevy::color::{Color, LinearRgba};
 use bevy::math::{Vec2, Vec3};
-use bevy::prelude::{default, AmbientLight, Camera, Camera2d, ClearColorConfig, ColorToComponents, Commands, Cuboid, Deref, DetectChangesMut, Handle, Image, IntoScheduleConfigs, Mesh, Mesh3d, PreStartup, Query, Res, ResMut, Resource, Transform, Update, Window, With};
+use bevy::prelude::{
+    default, AmbientLight, Camera, Camera2d, ClearColorConfig, ColorToComponents, Commands, Cuboid,
+    Deref, DetectChangesMut, Handle, Image, IntoScheduleConfigs, Mesh, Mesh3d, PreStartup, Query,
+    Res, ResMut, Resource, Transform, Update, Window, With,
+};
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use bevy::window::PrimaryWindow;
 use bevy::DefaultPlugins;
 use bevy_egui::egui::{epaint, Ui};
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiStartupSet, EguiUserTextures};
+use bevy_egui::{
+    egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiStartupSet, EguiUserTextures,
+};
 use bevy_panorbit_camera::{ActiveCameraData, PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_voxel_plot::{InstanceData, InstanceMaterialData, VoxelMaterialPlugin};
 
@@ -224,7 +230,6 @@ pub fn update_gui(
             )
         });
     }
-
 }
 fn show_plot(
     meshes: &mut ResMut<Assets<Mesh>>,
