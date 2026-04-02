@@ -32,7 +32,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
         InstanceMaterialData { instances },
     ));
 
-    commands.insert_resource(AmbientLight {
+    commands.spawn(AmbientLight {
         color: Color::WHITE,
         brightness: 1.5,
         affects_lightmapped_meshes: false,

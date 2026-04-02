@@ -113,7 +113,7 @@ fn voxel_plot_setup(
         NoFrustumCulling,
     ));
 
-    commands.insert_resource(AmbientLight {
+    commands.spawn(AmbientLight {
         color: Color::WHITE,
         brightness: 2.0, // Increase this to wash out shadows
         affects_lightmapped_meshes: false,
@@ -157,9 +157,9 @@ fn voxel_plot_setup(
                 // render before the "main pass" camera
                 clear_color: ClearColorConfig::Custom(Color::srgba(1.0, 1.0, 1.0, 0.0)),
                 order: -1,
-                target: RenderTarget::Image(ImageRenderTarget::from(image_handle.clone())),
                 ..default()
             },
+            RenderTarget::Image(ImageRenderTarget::from(image_handle.clone())),
             Transform::from_translation(Vec3::new(0.0, -150.0, 15.0))
                 .looking_at(Vec3::ZERO, Vec3::Y),
             PanOrbitCamera::default(),

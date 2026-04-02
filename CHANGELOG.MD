@@ -8,6 +8,10 @@ All notable changes to the `bevy voxel plot` crate will be documented in this fi
 
 * ...
 
+# 3.1.0 - 2.4.2026
+
+* Update to bevy 0.18
+
 # 2.3.0
 
 * Fixed the sorting for transparent voxels.
