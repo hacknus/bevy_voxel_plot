@@ -8,6 +8,10 @@ All notable changes to the `bevy voxel plot` crate will be documented in this fi
 
 * ...
 
+# 4.0.0 - 6.4.2026
+
+* Bump to version 4.0.0 for consistency
+
 # 3.1.0 - 2.4.2026
 
 * Update to bevy 0.18
