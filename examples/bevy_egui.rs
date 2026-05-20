@@ -217,18 +217,24 @@ pub fn update_gui(
     let height = 500.0;
 
     if let Ok(ctx) = contexts.ctx_mut() {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            show_plot(
-                &mut meshes,
-                &cube_preview_texture_id,
-                width,
-                height,
-                ui,
-                &mut query,
-                &mut opacity_threshold,
-                &mut cam_input,
-            )
-        });
+        let available = ctx.content_rect();
+        egui::Area::new(egui::Id::new("bevy_egui_central_panel"))
+            .fixed_pos(available.min)
+            .show(ctx, |ui| {
+                ui.set_min_size(available.size());
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    show_plot(
+                        &mut meshes,
+                        &cube_preview_texture_id,
+                        width,
+                        height,
+                        ui,
+                        &mut query,
+                        &mut opacity_threshold,
+                        &mut cam_input,
+                    )
+                });
+            });
     }
 }
 fn show_plot(

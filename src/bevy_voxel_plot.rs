@@ -8,8 +8,10 @@
 //! It's generally recommended to try the built-in instancing before going with this approach.
 
 use bevy::asset::{load_internal_asset, uuid_handle};
+use bevy::core_pipeline::core_3d::TransparentSortingInfo3d;
 use bevy::mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout};
 use bevy::pbr::SetMeshViewBindingArrayBindGroup;
+use bevy::render::sync_component::SyncComponent;
 use bevy::render::RenderSystems;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
@@ -18,10 +20,12 @@ use bevy::{
         system::{lifetimeless::*, SystemParamItem},
     },
     pbr::{
-        MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
+        self, MeshInputUniform, MeshPipeline, MeshPipelineKey, MeshPipelineSystems, MeshUniform,
+        RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup, ViewKeyCache,
     },
     prelude::*,
     render::{
+        batching::gpu_preprocessing::BatchedInstanceBuffers,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
@@ -33,10 +37,17 @@ use bevy::{
         renderer::RenderDevice,
         sync_world::MainEntity,
         view::ExtractedView,
-        Render, RenderApp,
+        Render, RenderApp, RenderStartup,
     },
 };
 use bytemuck::{Pod, Zeroable};
+
+impl SyncComponent<()> for CameraPosition {
+    type Target = ();
+}
+impl SyncComponent<()> for InstanceMaterialData {
+    type Target = ();
+}
 
 /// Component holding per-instance data for custom rendering.
 #[derive(Component)]
@@ -70,6 +81,10 @@ impl Plugin for VoxelMaterialPlugin {
             .add_render_command::<Transparent3d, DrawCustom>()
             .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
             .add_systems(
+                RenderStartup,
+                init_custom_pipeline.after(MeshPipelineSystems),
+            )
+            .add_systems(
                 Render,
                 (
                     queue_custom.in_set(RenderSystems::QueueMeshes),
@@ -84,9 +99,22 @@ impl Plugin for VoxelMaterialPlugin {
         );
     }
 
-    fn finish(&self, app: &mut App) {
-        app.sub_app_mut(RenderApp).init_resource::<CustomPipeline>();
+    fn finish(&self, _app: &mut App) {}
+}
+
+fn init_custom_pipeline(
+    mut commands: Commands,
+    custom_pipeline: Option<Res<CustomPipeline>>,
+    mesh_pipeline: Res<MeshPipeline>,
+) {
+    if custom_pipeline.is_some() {
+        return;
     }
+
+    commands.insert_resource(CustomPipeline {
+        shader: SHADER_HANDLE.clone(),
+        mesh_pipeline: mesh_pipeline.clone(),
+    });
 }
 
 /// Single instance data containing position, scale and color.
@@ -110,44 +138,67 @@ fn queue_custom(
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
+    maybe_batched_instance_buffers: Option<
+        Res<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>,
+    >,
     material_meshes: Query<(Entity, &MainEntity), With<InstanceMaterialData>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
-    views: Query<(&ExtractedView, &Msaa)>,
+    views: Query<&ExtractedView>,
+    view_key_cache: Res<ViewKeyCache>,
 ) {
     let draw_custom = transparent_3d_draw_functions.read().id::<DrawCustom>();
 
-    for (view, msaa) in &views {
+    for view in &views {
         let Some(transparent_phase) = transparent_render_phases.get_mut(&view.retained_view_entity)
         else {
             continue;
         };
 
-        let msaa_key = MeshPipelineKey::from_msaa_samples(msaa.samples());
-        let view_key = msaa_key | MeshPipelineKey::from_hdr(view.hdr);
-        let rangefinder = view.rangefinder3d();
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         for (entity, main_entity) in &material_meshes {
             let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*main_entity)
             else {
                 continue;
             };
-            let Some(mesh) = meshes.get(mesh_instance.mesh_asset_id) else {
+            let Some(mesh) = meshes.get(mesh_instance.mesh_asset_id()) else {
                 continue;
             };
 
-            let key =
-                view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+            let key = view_key
+                | MeshPipelineKey::from_primitive_topology_and_strip_index(
+                    mesh.primitive_topology(),
+                    mesh.index_format(),
+                );
+
             let pipeline = pipelines
                 .specialize(&pipeline_cache, &custom_pipeline, key, &mesh.layout)
                 .unwrap();
             transparent_phase.add(Transparent3d {
+                sorting_info: TransparentSortingInfo3d::Sorted {
+                    mesh_center: pbr::get_mesh_instance_world_from_local(
+                        *main_entity,
+                        mesh_instance.current_uniform_index,
+                        &render_mesh_instances,
+                        maybe_batched_instance_buffers.as_deref(),
+                    )
+                    .transform_point3(
+                        meshes
+                            .get(mesh_instance.mesh_asset_id())
+                            .unwrap()
+                            .aabb_center,
+                    ),
+                    depth_bias: 0.0,
+                },
                 entity: (entity, *main_entity),
                 pipeline,
                 draw_function: draw_custom,
-                distance: rangefinder.distance(&mesh_instance.center),
+                distance: 0.0,
                 batch_range: 0..1,
                 extra_index: PhaseItemExtraIndex::None,
-                indexed: false,
+                indexed: true,
             });
         }
     }
@@ -234,17 +285,6 @@ struct CustomPipeline {
     mesh_pipeline: MeshPipeline,
 }
 
-impl FromWorld for CustomPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let mesh_pipeline = world.resource::<MeshPipeline>().clone();
-
-        CustomPipeline {
-            shader: SHADER_HANDLE.clone(),
-            mesh_pipeline,
-        }
-    }
-}
-
 impl SpecializedMeshPipeline for CustomPipeline {
     type Key = MeshPipelineKey;
 
@@ -254,33 +294,6 @@ impl SpecializedMeshPipeline for CustomPipeline {
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
-
-        let color_format = TextureFormat::Rgba8UnormSrgb;
-
-        descriptor.depth_stencil = Some(DepthStencilState {
-            format: TextureFormat::Depth32Float,
-            depth_compare: CompareFunction::Always,
-            stencil: StencilState::default(),
-            depth_write_enabled: false,
-            bias: DepthBiasState::default(),
-        });
-
-        descriptor.fragment.as_mut().unwrap().targets[0] = Some(ColorTargetState {
-            format: color_format,
-            blend: Some(BlendState {
-                color: BlendComponent {
-                    src_factor: BlendFactor::SrcAlpha,
-                    dst_factor: BlendFactor::OneMinusSrcAlpha,
-                    operation: BlendOperation::Add,
-                },
-                alpha: BlendComponent {
-                    src_factor: BlendFactor::SrcAlpha,
-                    dst_factor: BlendFactor::OneMinusSrcAlpha,
-                    operation: BlendOperation::Add,
-                },
-            }),
-            write_mask: ColorWrites::ALL,
-        });
 
         descriptor.vertex.shader = self.shader.clone();
         descriptor.vertex.buffers.push(VertexBufferLayout {
@@ -340,14 +353,14 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         else {
             return RenderCommandResult::Skip;
         };
-        let Some(gpu_mesh) = meshes.into_inner().get(mesh_instance.mesh_asset_id) else {
+        let Some(gpu_mesh) = meshes.into_inner().get(mesh_instance.mesh_asset_id()) else {
             return RenderCommandResult::Skip;
         };
         let Some(instance_buffer) = instance_buffer else {
             return RenderCommandResult::Skip;
         };
         let Some(vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&mesh_instance.mesh_asset_id)
+            mesh_allocator.mesh_vertex_slice(&mesh_instance.mesh_asset_id())
         else {
             return RenderCommandResult::Skip;
         };
@@ -361,7 +374,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
                 count,
             } => {
                 let Some(index_buffer_slice) =
-                    mesh_allocator.mesh_index_slice(&mesh_instance.mesh_asset_id)
+                    mesh_allocator.mesh_index_slice(&mesh_instance.mesh_asset_id())
                 else {
                     return RenderCommandResult::Skip;
                 };
