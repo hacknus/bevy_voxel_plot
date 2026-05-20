@@ -168,6 +168,7 @@ fn queue_custom(
             };
 
             let key = view_key
+                | MeshPipelineKey::BLEND_ALPHA
                 | MeshPipelineKey::from_primitive_topology_and_strip_index(
                     mesh.primitive_topology(),
                     mesh.index_format(),
