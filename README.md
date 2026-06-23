@@ -3,6 +3,8 @@
 [![crates.io](https://img.shields.io/crates/v/bevy_voxel_plot.svg)](https://crates.io/crates/bevy_voxel_plot)
 [![Docs](https://docs.rs/bevy_voxel_plot/badge.svg)](https://docs.rs/bevy_voxel_plot)
 [![Rust](https://github.com/hacknus/bevy_voxel_plot/actions/workflows/rust.yml/badge.svg)](https://github.com/hacknus/bevy_voxel_plot/actions/workflows/rust.yml)
+[![Following released Bevy versions](https://img.shields.io/badge/Bevy%20tracking-released%20version-lightblue)](https://bevy.org/)
+
 
 A simple and efficient Voxel Plot for [Bevy](https://bevyengine.org).
 Developed for data visualisation purposes (e.g. pointclouds/voxelplots of 3D structures).
