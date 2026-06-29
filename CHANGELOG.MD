@@ -6,7 +6,7 @@ All notable changes to the `bevy voxel plot` crate will be documented in this fi
 
 ### Added:
 
-* ...
+* Update to bevy 0.19
 
 # 4.0.0 - 6.4.2026
 

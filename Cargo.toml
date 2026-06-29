@@ -1,6 +1,6 @@
 [package]
 name = "bevy_voxel_plot"
-version = "4.0.0"
+version = "5.0.0"
 edition = "2021"
 authors = ["Linus Leo Stöckli"]
 repository = "https://github.com/hacknus/bevy_voxel_plot"
@@ -13,9 +13,9 @@ homepage = "https://github.com/hacknus/bevy_voxel_plot"
 license = "Apache-2.0"
 
 [dependencies]
-bevy = "0.18"
+bevy = "0.19"
 bytemuck = "1.25"
 
 [dev-dependencies]
-bevy_panorbit_camera = { version = "0.34" }
-bevy_egui = { version = "0.39" }
+bevy_panorbit_camera = { version = "0.35" }
+bevy_egui = { version = "0.40" }
