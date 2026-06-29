@@ -17,5 +17,5 @@ bevy = "0.19"
 bytemuck = "1.25"
 
 [dev-dependencies]
-bevy_panorbit_camera = { git = "https://github.com/Plonq/bevy_panorbit_camera" }
+bevy_panorbit_camera = { version = "0.35" }
 bevy_egui = { version = "0.40" }
